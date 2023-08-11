@@ -11,17 +11,17 @@ class Transpose2D(object):
         nt = local_shape[0]
         nx = local_shape[1]
 
-        nchunks = ceil(nx/nranks)
+        nchunk = ceil(nx/nranks)
 
         if self.comm.rank != self.comm.size-1:
-            ny = nchunks
+            ny = nchunk
         else:
-            ny = max(nx - (nranks-1)*nchunks, 0)
+            ny = max(nx - (nranks-1)*nchunk, 0)
 
         self.xshape = local_shape
         self.yshape = tuple((ny, nt*nranks))
 
-        pad = nt*nranks*nchunks
+        pad = nt*nranks*nchunk
         self._msgshape = tuple((pad,))
 
         self._xmsg = np.zeros(self._msgshape, dtype=dtype)
@@ -29,8 +29,8 @@ class Transpose2D(object):
 
         self.dtype = self._xmsg.dtype
 
-        self._xshape_pad = tuple((nt, nchunks*nranks))
-        self._yshape_pad = tuple((nchunks, nt*nranks))
+        self._xshape_pad = tuple((nt, nchunk*nranks))
+        self._yshape_pad = tuple((nchunk, nt*nranks))
 
         self._xbuf = np.zeros(self._xshape_pad, dtype=dtype)
 
@@ -79,20 +79,12 @@ class Transpose2D(object):
         x[:] = xb[self._xslice]
 
     def _packy(self, y, ym):
-        nc = self._yshape_pad[0]
-        nw = self._yshape_pad[1]
-        ny = self.yshape[0]
-
-        for i in range(nw):
-            b = nc*i
-            e = b + ny
-            ym[b:e] = y[:, i]
+        nc, nw = self._yshape_pad
+        ym.reshape(nw, nc).T[self._yslice] = y[:]
 
     def _unpacky(self, ym, y):
-        nt = self._xshape_pad[0]
-        nc = self._yshape_pad[0]
-        nr = self.comm.size
-        y[:] = ym.reshape((nt*nr, nc)).T[self._yslice]
+        nc, nw = self._yshape_pad
+        y[:] = ym.reshape((nw, nc)).T[self._yslice]
 
     def _check_arrays(self, x, y):
         assert x.shape == self.xshape
