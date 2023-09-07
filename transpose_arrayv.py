@@ -10,8 +10,8 @@ nranks = comm.size
 
 # initialise data
 
-xpart = tuple((3, 1, 2))
-ypart = tuple((2, 2, 1))
+xpart = tuple((3, 1, 2, 1))
+ypart = tuple((2, 2, 1, 1))
 
 nx = sum(xpart)
 

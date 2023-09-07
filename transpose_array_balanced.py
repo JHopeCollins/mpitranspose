@@ -2,13 +2,12 @@ import numpy as np
 from mpi4py import MPI
 from transpose import Transposer
 from utils import print_in_order, print_once
-from time import sleep
 
 comm = MPI.COMM_WORLD
 rank = comm.rank
 
 xpart = tuple((3 for _ in range(comm.size)))
-ypart = tuple((2 for _ in range(comm.size)))
+ypart = tuple((3 for _ in range(comm.size)))
 
 nx = sum(xpart)
 ny = ypart[0]
