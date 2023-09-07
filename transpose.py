@@ -3,39 +3,40 @@ from mpi4py import MPI
 from math import ceil
 
 
-class Transpose2D(object):
-    def __init__(self, local_shape, comm=MPI.COMM_WORLD, dtype=None):
+class Transposer(object):
+    def __init__(self, xpart, ypart, comm=MPI.COMM_WORLD, dtype=None):
         self.comm = comm
+        rank = comm.rank
         nranks = comm.size
 
-        nt = local_shape[0]
-        nx = local_shape[1]
+        assert len(xpart) == nranks
+        assert len(ypart) == nranks
 
-        nchunk = ceil(nx/nranks)
+        assert len(set(xpart)) == 1
+        assert len(set(ypart)) == 1
 
-        if self.comm.rank != self.comm.size-1:
-            ny = nchunk
-        else:
-            ny = max(nx - (nranks-1)*nchunk, 0)
+        self.nx = sum(xpart)
+        self.ny = sum(ypart)
 
-        self.xshape = local_shape
-        self.yshape = tuple((ny, nt*nranks))
+        nxlocal = xpart[0]
+        nylocal = ypart[0]
 
-        pad = nt*nranks*nchunk
-        self._msgshape = tuple((pad,))
+        self.nxlocal = nxlocal
+        self.nylocal = nylocal
 
-        self._xmsg = np.zeros(self._msgshape, dtype=dtype)
-        self._ymsg = np.zeros(self._msgshape, dtype=dtype)
+        self.xpart = xpart
+        self.ypart = ypart
+
+        self.xshape = tuple((nylocal, self.nx))
+        self.yshape = tuple((nxlocal, self.ny))
+
+        self._xshape = tuple((nylocal*self.nx,))
+        self._yshape = tuple((nxlocal*self.ny,))
+
+        self._xmsg =  np.zeros(self._xshape, dtype=dtype)
+        self._ymsg =  np.zeros(self._yshape, dtype=dtype)
 
         self.dtype = self._xmsg.dtype
-
-        self._xshape_pad = tuple((nt, nchunk*nranks))
-        self._yshape_pad = tuple((nchunk, nt*nranks))
-
-        self._xbuf = np.zeros(self._xshape_pad, dtype=dtype)
-
-        self._xslice = np.s_[:, :nx]
-        self._yslice = np.s_[:ny, :]
 
     def forward(self, x, y):
         self._check_arrays(x, y)
@@ -50,41 +51,23 @@ class Transpose2D(object):
         self._unpackx(self._xmsg, x)
 
     def _packx(self, x, xm):
-        xb = self._xbuf
-        xb[self._xslice] = x[:]
-
-        nt = self._xshape_pad[0]
-        nc = self._yshape_pad[0]
-        nr = self.comm.size
-
-        xp = xm.reshape((nr, nt*nc))
-
-        for i in range(nr):
-            xp[i, :] = xb[:, i*nc:(i+1)*nc].reshape(-1)
-
-    def _unpackx(self, xm, x):
-        xb = self._xbuf
-        nr = self.comm.size
-        nt = self._xshape_pad[0]
-        nc = self._yshape_pad[0]
-        for i in range(nr):
-            ib = i*nt*nc
-            ie = (i+1)*nt*nc
-            xr = xm[ib:ie].reshape(nt, nc)
-
-            jb = i*nc
-            je = (i+1)*nc
-            xb[:, jb:je] = xr[:]
-
-        x[:] = xb[self._xslice]
+        xm.reshape(x.T.shape)[:] = x.T
 
     def _packy(self, y, ym):
-        nc, nw = self._yshape_pad
-        ym.reshape(nw, nc).T[self._yslice] = y[:]
+        ym.reshape(y.T.shape)[:] = y.T
+
+    def _unpackx(self, xm, x):
+        self._unpack(xm, x, self.nylocal, self.nxlocal)
 
     def _unpacky(self, ym, y):
-        nc, nw = self._yshape_pad
-        y[:] = ym.reshape((nw, nc)).T[self._yslice]
+        self._unpack(ym, y, self.nxlocal, self.nylocal)
+
+    def _unpack(self, src, dst, srcdim, dstdim):
+        buf = src.reshape((self.comm.size, srcdim*dstdim))
+        for j in range(srcdim):
+            b = j*dstdim
+            e = (j+1)*dstdim
+            dst[j, :] = buf[:, b:e].reshape(-1)
 
     def _check_arrays(self, x, y):
         assert x.shape == self.xshape

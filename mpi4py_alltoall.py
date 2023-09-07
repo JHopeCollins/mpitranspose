@@ -1,14 +1,14 @@
 from mpi4py import MPI
 import numpy as np
-from functools import reduce
-from operator import add
 from time import sleep
 from math import ceil
 from utils import print_in_order
 
+
 def arrstr(array):
     return str(array)
     # return "[" + reduce(add, (f"{i:3}" for i in array)) + "]"
+
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -31,22 +31,17 @@ comm.Alltoall(senddata, recvdata)
 data1 = np.zeros((nchunks, size), dtype=int)
 
 for i in range(nchunks):
-    data1[i,:] = recvdata[i::nchunks]
-    #data1[i*size:(i+1)*size] = recvdata[i::nchunks]
-
-#data1 = data1.reshape((nchunks, size))
+    data1[i, :] = recvdata[i::nchunks]
 
 print_in_order(comm, "process %s original %s "
-                     % (rank,arrstr(data0)))
+                     % (rank, arrstr(data0)))
 
 sleep(0.1)
 
 print_in_order(comm, "process %s sending %s receiving %s "
-                     % (rank,arrstr(senddata),arrstr(recvdata)))
+                     % (rank, arrstr(senddata), arrstr(recvdata)))
 
 sleep(0.1)
 
 print_in_order(comm, "process %s transposed\n%s"
-                     % (rank,data1))
-
-# mpiexec -n 10 python mpialltoall.py
+                     % (rank, data1))

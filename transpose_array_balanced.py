@@ -1,39 +1,38 @@
 import numpy as np
 from mpi4py import MPI
-from transpose import Transpose2D
-from utils import print_in_order
+from transpose import Transposer
+from utils import print_in_order, print_once
 from time import sleep
 
 comm = MPI.COMM_WORLD
 rank = comm.rank
 
-nx = 13
-nt = 2
+xpart = tuple((2 for _ in range(comm.size)))
+ypart = tuple((2 for _ in range(comm.size)))
 
-shape = tuple((nt, nx))
+nx = sum(xpart)
+ny = ypart[0]
 
-transpose = Transpose2D(shape, comm, dtype=int)
+transpose = Transposer(xpart, ypart, comm, dtype=int)
 
 x = np.zeros(transpose.xshape, dtype=transpose.dtype)
 y = np.zeros(transpose.yshape, dtype=transpose.dtype)
 
-for i in range(nt):
+for i in range(ny):
     row_length = nx
-    rows = i + rank*nt
+    rows = i + rank*ny
     offset = 1 + rows*row_length
-    x[i,:nx] = offset + np.arange(row_length, dtype=int)
+    x[i, :nx] = offset + np.arange(row_length, dtype=int)
 
-print_in_order(comm, "process %s original\n%s "
-                     % (rank, x))
-sleep(0.1)
+print_once(comm, "original data:")
+print_in_order(comm, x)
 
 transpose.forward(x, y)
 
-print_in_order(comm, "process %s transposed once\n%s"
-                     % (rank,y.T))
-sleep(0.1)
+print_once(comm, "transposed once:")
+print_in_order(comm, y)
 
 transpose.backward(y, x)
 
-print_in_order(comm, "process %s transposed twice\n%s "
-                     % (rank, x))
+print_once(comm, "transposed twice:")
+print_in_order(comm, x)
