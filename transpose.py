@@ -1,8 +1,23 @@
+import abc
 import numpy as np
 from mpi4py import MPI
 
 
-class TransposerBase(object):
+class TransposerInterface(abc.ABC):
+    @abc.abstractmethod
+    def __init__(self, xpart, ypart, comm=MPI.COMM_WORLD, dtype=None):
+        pass
+
+    @abc.abstractmethod
+    def forward(self, x, y):
+        pass
+
+    @abc.abstractmethod
+    def backward(self, y, x):
+        pass
+
+
+class TransposerBase(TransposerInterface):
     def __init__(self, xpart, ypart, comm=MPI.COMM_WORLD, dtype=None):
         self.comm = comm
         rank = comm.rank
@@ -121,3 +136,128 @@ class Transposerv(TransposerBase):
 
     def _get_buf(self, msg):
         return msg[0]
+
+
+class PaddedTransposer(TransposerInterface):
+    def __init__(self, xpart, ypart, comm=MPI.COMM_WORLD, dtype=None):
+        self.comm = comm
+        rank = comm.rank
+        nranks = comm.size
+
+        assert len(xpart) == nranks
+        assert len(ypart) == nranks
+
+        assert len(set(ypart)) == 1
+
+        self.xpart = xpart
+        self.ypart = ypart
+
+        self.nx = sum(xpart)
+        self.ny = sum(ypart)
+
+        nxlocal = xpart[rank]
+        nylocal = ypart[rank]
+
+        self.xshape = tuple((nylocal, self.nx))
+        self.yshape = tuple((nxlocal, self.ny))
+
+        nxlocal_pad = max(xpart)
+        nxpad = comm.size*nxlocal_pad
+        msglen = nxlocal_pad*nylocal
+
+        self._xshape = tuple((nylocal*nxpad,))
+        self._yshape = tuple((nxlocal_pad*self.ny,))
+
+        self._xpadshape = tuple((nxpad, nylocal))
+        self._ypadshape = tuple((comm.size, msglen))
+
+        self._xslice = np.s_[:, :self.nx]
+        self._yslice = np.s_[:nxlocal, :]
+
+        self._xbuf = np.zeros(self._xshape, dtype=dtype)
+        self._ybuf = np.zeros(self._yshape, dtype=dtype)
+
+        self.dtype = self._xbuf.dtype
+
+        self._xmsg = self._xbuf
+        self._ymsg = self._ybuf
+
+        self.Alltoall = self.comm.Alltoall
+
+    def forward(self, x, y):
+        self._check_arrays(x, y)
+        self._packx(x, self._xmsg)
+        # print_once(self.comm, "xmsg:")
+        # print_in_order(self.comm, self._xmsg)
+        self.Alltoall(self._xmsg, self._ymsg)
+        # print_once(self.comm, "ymsg:")
+        # print_in_order(self.comm, self._ymsg)
+        self._unpacky(self._ymsg, y)
+
+    def backward(self, y, x):
+        self._check_arrays(x, y)
+        self._packy(y, self._ymsg)
+        # print_once(self.comm, "ymsg:")
+        # print_in_order(self.comm, self._ymsg)
+        self.Alltoall(self._ymsg, self._xmsg)
+        # print_once(self.comm, "xmsg:")
+        # print_in_order(self.comm, self._xmsg)
+        self._unpackx(self._xmsg, x)
+
+    def _get_buf(self, msg):
+        buf = msg[0]
+        shape = msg[1]
+        bufslice = msg[2]
+        return buf.reshape(shape)[bufslice]
+
+    def _packx(self, x, xm):
+        nx = self.nx
+        xmsg = xm.reshape(self._xpadshape).T
+        for r in range(self.comm.size):
+            xb = sum(self.xpart[:r])
+            mlen = self.xpart[r]
+            xpad = max(self.xpart)
+            yb = r*xpad
+            xmsg[:nx, yb:yb+mlen] = x[:, xb:xb+mlen]
+
+    def _unpackx(self, xm, x):
+        nx = self.nx
+        xmsg = xm.reshape(self._xpadshape).T
+        for r in range(self.comm.size):
+            xb = sum(self.xpart[:r])
+            mlen = self.xpart[r]
+            xpad = max(self.xpart)
+            yb = r*xpad
+            x[:, xb:xb+mlen] = xmsg[:nx, yb:yb+mlen]
+
+    def _packy(self, y, ym):
+        rank = self.comm.rank
+        xpad = max(self.xpart)
+        nylocal = self.ypart[rank]
+        nxlocal = self.xpart[rank]
+        ybuf = ym.reshape(self._ypadshape)
+
+        for r in range(self.comm.size):
+            ymsg = ybuf[r, :].reshape(xpad, nylocal)
+            yb = sum(self.ypart[:r])
+            yl = nylocal
+            ymsg[:nxlocal, :] = y[:, yb:yb+yl]
+
+    def _unpacky(self, ym, y):
+        rank = self.comm.rank
+        xpad = max(self.xpart)
+        nylocal = self.ypart[rank]
+        nxlocal = self.xpart[rank]
+        ybuf = ym.reshape(self._ypadshape)
+
+        for r in range(self.comm.size):
+            ymsg = ybuf[r, :].reshape(xpad, nylocal)
+            yb = sum(self.ypart[:r])
+            yl = nylocal
+            y[:, yb:yb+yl] = ymsg[:nxlocal, :]
+
+    def _check_arrays(self, x, y):
+        assert x.shape == self.xshape
+        assert y.shape == self.yshape
+        assert x.dtype == self.dtype
+        assert y.dtype == self.dtype
