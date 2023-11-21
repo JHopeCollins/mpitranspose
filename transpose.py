@@ -2,6 +2,8 @@ import abc
 import numpy as np
 from mpi4py import MPI
 
+__all__ = ["Transposer", "Transposerv", "PaddedTransposer"]
+
 
 class TransposerInterface(abc.ABC):
     @abc.abstractmethod
@@ -187,21 +189,13 @@ class PaddedTransposer(TransposerInterface):
     def forward(self, x, y):
         self._check_arrays(x, y)
         self._packx(x, self._xmsg)
-        # print_once(self.comm, "xmsg:")
-        # print_in_order(self.comm, self._xmsg)
         self.Alltoall(self._xmsg, self._ymsg)
-        # print_once(self.comm, "ymsg:")
-        # print_in_order(self.comm, self._ymsg)
         self._unpacky(self._ymsg, y)
 
     def backward(self, y, x):
         self._check_arrays(x, y)
         self._packy(y, self._ymsg)
-        # print_once(self.comm, "ymsg:")
-        # print_in_order(self.comm, self._ymsg)
         self.Alltoall(self._ymsg, self._xmsg)
-        # print_once(self.comm, "xmsg:")
-        # print_in_order(self.comm, self._xmsg)
         self._unpackx(self._xmsg, x)
 
     def _get_buf(self, msg):
