@@ -255,3 +255,47 @@ class PaddedTransposer(TransposerInterface):
         assert y.shape == self.yshape
         assert x.dtype == self.dtype
         assert y.dtype == self.dtype
+
+
+class Transposerw(TransposerInterface):
+    def __init__(self, xpart, ypart, comm=MPI.COMM_WORLD, dtype=None):
+        from asQ.pencil import Pencil, Subcomm
+        self.comm = comm
+        rank = comm.rank
+        nranks = comm.size
+
+        assert len(xpart) == nranks
+        assert len(ypart) == nranks
+
+        self.xpart = xpart
+        self.ypart = ypart
+
+        self.nx = sum(xpart)
+        self.ny = sum(ypart)
+
+        subcomm = Subcomm(comm, [0, 1])
+        sizes = np.array([self.ny, self.nx], dtype=int)
+        p0 = Pencil(subcomm, sizes, axis=1)
+        p1 = p0.pencil(0)
+
+        self.xshape = p0.subshape
+        self.yshape = tuple(reversed(p1.subshape))
+
+        self._y = np.zeros(p1.subshape, dtype=dtype)
+
+        assert self.xshape[0] == ypart[rank]
+        assert self.xshape[1] == self.nx
+
+        assert self.yshape[0] == xpart[rank]
+        assert self.yshape[1] == self.ny
+
+        self.transfer = p0.transfer(p1, dtype)
+        self.dtype = self.transfer.dtype
+
+    def forward(self, x, y):
+        self.transfer.forward(x, self._y)
+        y.T[:] = self._y
+
+    def backward(self, y, x):
+        self._y[:] = y.T
+        self.transfer.backward(self._y, x)

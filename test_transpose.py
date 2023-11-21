@@ -1,7 +1,7 @@
 from mpi4py import MPI
 import pytest
 import numpy as np
-from transpose import Transposer, Transposerv, PaddedTransposer
+from transpose import Transposer, Transposerv, PaddedTransposer, Transposerw
 
 
 def gather_rank_values(val, dtype=None, comm=MPI.COMM_WORLD):
@@ -94,3 +94,13 @@ def test_transpose_padded():
     ypart = tuple(2 for _ in range(comm.size))
 
     transpose_test(xpart, ypart, PaddedTransposer)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_transposew():
+    comm = MPI.COMM_WORLD
+
+    xpart = tuple((3 for _ in range(comm.size)))
+    ypart = tuple((2 for _ in range(comm.size)))
+
+    transpose_test(xpart, ypart, Transposerw)
