@@ -33,5 +33,7 @@ def measure_timing(func, nmeasure=3, nwarmup=0, comm=MPI.COMM_WORLD):
     tmean = mean(measured_times)
     tstd = std(measured_times)
 
-    return TimingMeasurements(nwarmup, nmeasure, tmean, tstd,
-                              warmup_times, measured_times)
+    return TimingMeasurements(nwarmup=nwarmup, nmeasure=nmeasure,
+                              mean=tmean, std=tstd,
+                              warmup_times=warmup_times,
+                              measured_times=measured_times)
