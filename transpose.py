@@ -25,6 +25,11 @@ class TransposerBase(TransposerInterface):
         rank = comm.rank
         nranks = comm.size
 
+        if type(xpart) is int:
+            xpart = tuple(xpart for _ in range(comm.size))
+        if type(ypart) is int:
+            ypart = tuple(ypart for _ in range(comm.size))
+
         assert len(xpart) == nranks
         assert len(ypart) == nranks
 
@@ -100,7 +105,38 @@ class TransposerBase(TransposerInterface):
 
 
 class Transposer(TransposerBase):
+    """
+    Class for transposing a 2D distributed array.
+
+    The distribution:
+        - must be one dimensional i.e. each rank only holds either
+          entire rows or entire columns at any one time.
+        - must be uniform i.e. all ranks hold the same number of
+          either rows or columns at any one time.
+
+    Provides methods for the forward and backward transpose.
+    Forward transpose assumes each rank hold entire rows (x coord) and
+    transposes so each rank holds entire columns (y coord).
+    Backward transpose does the reverse operation.
+
+    The uniform distribution means that MPI_Alltoall can be used
+    for the communication round.
+    """
+
     def __init__(self, xpart, ypart, comm=MPI.COMM_WORLD, dtype=None):
+        """
+        :arg xpart: The x partition i.e. the number of columns on each rank
+            after a backward transpose. Can be either a tuple or int. If
+            xpart is a tuple then it must contain exactly comm.size
+            identical elements.
+        :arg ypart: The y partition i.e. the number of rows on each rank
+            after a forward transpose. Can be either a tuple or int. If
+            ypart is a tuple then it must contain exactly comm.size
+            identical elements.
+        :arg comm: The MPI communicator that the array is distributed over.
+        :arg dtype: the type of the array elements. Must be a valid numpy
+            array element type.
+        """
         super().__init__(xpart, ypart, comm=comm, dtype=dtype)
 
         assert len(set(xpart)) == 1
@@ -116,7 +152,36 @@ class Transposer(TransposerBase):
 
 
 class Transposerv(TransposerBase):
+    """
+    Class for transposing a 2D distributed array.
+
+    The distribution:
+        - must be one dimensional i.e. each rank only holds either
+          entire rows or entire columns at any one time.
+        - may be non-uniform i.e. each rank can hold a different number
+          of either rows or columns at any one time.
+
+    Provides methods for the forward and backward transpose.
+    Forward transpose assumes each rank hold entire rows (x coord) and
+    transposes so each rank holds entire columns (y coord).
+    Backward transpose does the reverse operation.
+
+    The non-uniform distribution means that MPI_Alltoallv must be used
+    for the communication round.
+    """
+
     def __init__(self, xpart, ypart, comm=MPI.COMM_WORLD, dtype=None):
+        """
+        :arg xpart: The x partition i.e. the number of columns on each rank
+            after a backward transpose. Can be either a tuple or int. If
+            xpart is a tuple then it must contain exactly comm.size elements.
+        :arg ypart: The y partition i.e. the number of rows on each rank
+            after a forward transpose. Can be either a tuple or int. If
+            ypart is a tuple then it must contain exactly comm.size elements.
+        :arg comm: The MPI communicator that the array is distributed over.
+        :arg dtype: the type of the array elements. Must be a valid numpy
+            array element type.
+        """
         super().__init__(xpart, ypart, comm=comm, dtype=dtype)
 
         rank = comm.rank
@@ -141,7 +206,37 @@ class Transposerv(TransposerBase):
 
 
 class Transposerw(TransposerInterface):
+    """
+    Class for transposing a 2D distributed array.
+
+    The distribution:
+        - must be one dimensional i.e. each rank only holds either
+          entire rows or entire columns at any one time.
+        - must be uniform i.e. all ranks hold the same number of
+          either rows or columns at any one time.
+
+    Provides methods for the forward and backward transpose.
+    Forward transpose assumes each rank hold entire rows (x coord) and
+    transposes so each rank holds entire columns (y coord).
+    Backward transpose does the reverse operation.
+
+    The transposes are implemented using the mpi4py-fft library
+    with MPI_Alltoallw.
+    """
     def __init__(self, xpart, ypart, comm=MPI.COMM_WORLD, dtype=None):
+        """
+        :arg xpart: The x partition i.e. the number of columns on each rank
+            after a backward transpose. Can be either a tuple or int. If
+            xpart is a tuple then it must contain exactly comm.size
+            identical elements.
+        :arg ypart: The y partition i.e. the number of rows on each rank
+            after a forward transpose. Can be either a tuple or int. If
+            ypart is a tuple then it must contain exactly comm.size
+            identical elements.
+        :arg comm: The MPI communicator that the array is distributed over.
+        :arg dtype: the type of the array elements. Must be a valid numpy
+            array element type.
+        """
         from asQ.pencil import Pencil, Subcomm
         self.comm = comm
         rank = comm.rank
@@ -185,7 +280,49 @@ class Transposerw(TransposerInterface):
 
 
 class PaddedTransposer(TransposerInterface):
+    """
+    Class for transposing a 2D distributed array.
+
+    The distribution:
+        - must be one dimensional i.e. each rank only holds either
+          entire rows or entire columns at any one time.
+        - may be non-uniform in x i.e. each rank can hold a different
+          number of columns.
+        - must be uniform in y i.e. all ranks hold the same number of
+          rows.
+
+    Provides methods for the forward and backward transpose.
+    Forward transpose assumes each rank hold entire rows (x coord) and
+    transposes so each rank holds entire columns (y coord).
+    Backward transpose does the reverse operation.
+
+    This implementation assumes that the x partition is nearly uniform
+    i.e. the largest number of columns on any rank is only slightly
+    larger than the number of columns on any other rank (relatively).
+    For the transpose, the local arrays are zero-padded so they are
+    the same size on every rank. This means that the communications
+    can be implemented with MPI_Alltoall, which can be more easily
+    optimised than MPI_Alltoallv or MPI_Alltoallw.
+
+    This assumes that the rows are much longer than the columns
+    (sum(xpart) >> sum(ypart)) and that the benefit of using more
+    optimised collective operations is greater than the overhead
+    of the additional communication volume.
+    """
+
     def __init__(self, xpart, ypart, comm=MPI.COMM_WORLD, dtype=None):
+        """
+        :arg xpart: The x partition i.e. the number of columns on each rank
+            after a backward transpose. Can be either a tuple or int. If
+            xpart is a tuple then it must contain exactly comm.size elements.
+        :arg ypart: The y partition i.e. the number of rows on each rank
+            after a forward transpose. Can be either a tuple or int. If
+            ypart is a tuple then it must contain exactly comm.size
+            identical elements.
+        :arg comm: The MPI communicator that the array is distributed over.
+        :arg dtype: the type of the array elements. Must be a valid numpy
+            array element type.
+        """
         self.comm = comm
         rank = comm.rank
         nranks = comm.size
@@ -241,12 +378,6 @@ class PaddedTransposer(TransposerInterface):
         self._packy(y, self._ymsg)
         self.Alltoall(self._ymsg, self._xmsg)
         self._unpackx(self._xmsg, x)
-
-    def _get_buf(self, msg):
-        buf = msg[0]
-        shape = msg[1]
-        bufslice = msg[2]
-        return buf.reshape(shape)[bufslice]
 
     def _packx(self, x, xm):
         nx = self.nx
