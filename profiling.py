@@ -2,6 +2,7 @@ from mpi4py import MPI
 import numpy as np
 from utils import print_in_order, print_once
 from transpose import *
+from ensemble_comm import EnsembleCommunicator
 
 def rowcol_comms(part, comm=MPI.COMM_WORLD):
     nslices
@@ -16,21 +17,15 @@ nslices = 4
 slice_length = 1
 
 nx = 64
-assert nx % nslices == 0
-
-assert gsize % nslices == 0
-
 # rank/size of spatial-axis comm
 ssize = gsize // nslices
 
 # spatial / temporal comms
-scomm = global_comm.Split(color=(grank//ssize), key=grank)
-tcomm = global_comm.Split(color=(grank%ssize), key=grank)
+ensemble = EnsembleCommunicator(global_comm, ssize)
+scomm = ensemble.xcomm
+tcomm = ensemble.ycomm
 
-assert ssize == scomm.size
 tsize = tcomm.size
-assert tsize == nslices
-
 srank = scomm.rank
 trank = tcomm.rank
 
