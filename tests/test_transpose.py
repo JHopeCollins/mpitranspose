@@ -1,7 +1,7 @@
 from mpi4py import MPI
 import pytest
 import numpy as np
-from transpose import Transposer, Transposerv, PaddedTransposer, Transposerw
+from mpitranspose import Transposer, Transposerv, PaddedTransposer, Transposerw
 
 
 def gather_rank_values(val, dtype=None, comm=MPI.COMM_WORLD):

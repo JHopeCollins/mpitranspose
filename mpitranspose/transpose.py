@@ -220,8 +220,8 @@ class Transposerw(TransposerInterface):
     transposes so each rank holds entire columns (y coord).
     Backward transpose does the reverse operation.
 
-    The transposes are implemented using the mpi4py-fft library
-    with MPI_Alltoallw.
+    The transposes use the implementation from the mpi4py-fft
+    library with MPI_Alltoallw.
     """
     def __init__(self, xpart, ypart, comm=MPI.COMM_WORLD, dtype=None):
         """
@@ -237,11 +237,7 @@ class Transposerw(TransposerInterface):
         :arg dtype: the type of the array elements. Must be a valid numpy
             array element type.
         """
-        try:
-            from mpi4py_fft.pencil import Pencil, Subcomm
-        except ImportError as err:
-            msg = "mpi4py_fft module must be installed to use Transposerw"
-            raise type(err)(msg) from err
+        from mpitranspose.pencil import Pencil, Subcomm
 
         self.comm = comm
         rank = comm.rank

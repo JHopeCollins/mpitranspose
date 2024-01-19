@@ -1,11 +1,8 @@
 from mpi4py import MPI
 import numpy as np
-from utils import print_in_order, print_once
-from transpose import *
+from mpitranspose import (Transposer, Transposerv,  # noqa: F401
+                          Transposerw, PaddedTransposer)  # noqa: F401
 from ensemble_comm import EnsembleCommunicator
-
-def rowcol_comms(part, comm=MPI.COMM_WORLD):
-    nslices
 
 global_comm = MPI.COMM_WORLD
 
@@ -66,7 +63,7 @@ for i in range(niterations):
 
 for r in range(ssize):
     global_comm.Barrier()
-    if (trank==0) and (srank==r):
+    if (trank == 0) and (srank == r):
         print(f"ftimes = {ftimes}")
         print(f"btimes = {btimes}")
     global_comm.Barrier()

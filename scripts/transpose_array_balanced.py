@@ -1,7 +1,7 @@
 import numpy as np
 from mpi4py import MPI
-from transpose import Transposer
-from utils import print_in_order, print_once
+from mpitranspose import Transposer
+from mpitranspose.utils import print_in_order, print_once
 
 comm = MPI.COMM_WORLD
 rank = comm.rank
